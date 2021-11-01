@@ -1,50 +1,118 @@
-import resolve from '@rollup/plugin-node-resolve'
+import babel from '@rollup/plugin-babel'
 import commonjs from '@rollup/plugin-commonjs'
-import babel, { getBabelOutputPlugin } from '@rollup/plugin-babel'
-import jsx from 'acorn-jsx'
+import resolve from '@rollup/plugin-node-resolve'
+import image from '@rollup/plugin-image'
+import styles from 'rollup-plugin-styles'
+import autoprefixer from 'autoprefixer'
 import typescript from 'rollup-plugin-typescript2'
-import postcss from 'rollup-plugin-postcss-modules'
-// import autoprefixer from 'autoprefixer'
-import { uglify } from 'rollup-plugin-uglify'
+import { terser } from 'rollup-plugin-terser'
+import fs from 'fs'
+import path from 'path'
+import pack from './package.json'
 
-export default {
-  input: 'src/index.ts',
-  acornInjectPlugins: [jsx()],
-  plugins: [
-    resolve(),
-    commonjs(),
-    postcss({
-      extract: true // extracts to `${basename(dest)}.css`
-      // plugins: [autoprefixer()],
-    }),
-    typescript({ jsx: 'preserve' }),
-    babel({
-      exclude: 'node_modules/**',
-      presets: ['@babel/preset-react'],
-      babelHelpers: 'bundled',
-      extensions: ['.js', '.jsx', '.es6', '.es', '.mjs', '.ts', '.tsx', '.css', '.less']
-    }),
-    uglify()
-  ],
-  output: [
-    // {
-    //   file: 'dist/index.js',
-    //   format: 'cjs'
-    // },
-    {
-      file: 'lib/index.esm.js',
-      format: 'esm'
-    }
-    // {
-    //   file: 'dist/index.umd.js',
-    //   format: 'umd',
-    //   name: 'libName',
-    //   plugins: [
-    //     getBabelOutputPlugin({
-    //       presets: ['@babel/preset-env', { modules: 'umd' }]
-    //     })
-    //   ]
-    // }
-  ],
-  external: ['antd', 'react', 'react-dom']
+const banner = `/*!
+*
+* ${pack.name} ${pack.version}
+*
+* Copyright 2021-present, ${pack.title}, Inc.
+* All rights reserved.
+*
+*/`
+
+/**
+ * 入口文件
+ */
+const entryFile = 'src/index.ts'
+
+const componentDir = 'src/components'
+const cModuleNames = fs.readdirSync(path.resolve(componentDir))
+const componentEntryFiles = cModuleNames
+  .map(name => (/^[A-Z]\w*/.test(name) ? `${componentDir}/${name}/index.tsx` : undefined))
+  .filter(n => !!n)
+
+const external = ['react', 'react-dom']
+const globals = { react: 'React', 'react-dom': 'ReactDOM' }
+
+const commonPlugins = [
+  /* 将图片打包进 js */
+  image(),
+  /* 自动匹配文件后缀 */
+  resolve({ extensions: ['.ts', '.tsx'] }),
+  babel({
+    exclude: 'node_modules/**',
+    babelHelpers: 'runtime',
+    extensions: ['.ts', '.tsx'],
+    skipPreflightCheck: true,
+    presets: ['@babel/preset-react', '@babel/preset-typescript']
+  }),
+  commonjs()
+]
+
+const stylePluginConfig = {
+  mode: 'extract',
+  less: { javascriptEnabled: true },
+  extensions: ['.less', '.css'],
+  minimize: false,
+  use: ['less'],
+  url: {
+    inline: true
+  },
+  plugins: [autoprefixer()]
 }
+
+const splitOutput = {
+  globals,
+  preserveModules: true,
+  preserveModulesRoot: 'src',
+  exports: 'named',
+  assetFileNames: ({ name }) => {
+    const { ext, dir, base } = path.parse(name)
+    if (ext !== '.css') return '[name].[ext]'
+    // 规范 style 的输出格式
+    return path.join(dir, 'style', base)
+  }
+}
+
+export default [
+  {
+    input: entryFile,
+    output: {
+      format: 'umd',
+      name: 'Productivity',
+      globals,
+      assetFileNames: '[name].[ext]',
+      file: 'dist/index.js',
+      banner
+    },
+    plugins: [styles(stylePluginConfig), ...commonPlugins],
+    external
+  },
+  {
+    input: entryFile,
+    output: {
+      format: 'umd',
+      name: 'Productivity',
+      globals,
+      assetFileNames: '[name].[ext]',
+      file: 'dist/index.min.js',
+      plugins: [terser()],
+      banner
+    },
+    plugins: [styles({ ...stylePluginConfig, minimize: true }), ...commonPlugins],
+    external
+  },
+  {
+    input: [entryFile, ...componentEntryFiles],
+    preserveModules: true,
+    output: { ...splitOutput, format: 'es', dir: 'es' },
+    plugins: [styles(stylePluginConfig), typescript({ jsx: 'preserve' }), ...commonPlugins],
+    external
+  },
+  {
+    input: [entryFile, ...componentEntryFiles],
+    preserveModules: true,
+    output: { ...splitOutput, format: 'cjs', dir: 'lib' },
+    plugins: [styles(stylePluginConfig), typescript({ jsx: 'preserve' }), ...commonPlugins],
+    external
+  }
+]

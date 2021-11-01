@@ -1,5 +1,2 @@
-import { openTestModal } from './components/TestModal/TestModal'
-
-;(window as any).openTestModal = openTestModal
-
-export { openTestModal }
+export * from './components/Button'
+export * from './components/Input'

@@ -1,5 +1,4 @@
-## Rollup Build Lib
+## Rollup Build Npm
 
-> 使用 `rollup` 打包静态资源 `gulp` 打包 css tsc 打包 npm
+> 使用 `rollup` 打包组件库
 
-TODO:
